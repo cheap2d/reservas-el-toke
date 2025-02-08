@@ -32,19 +32,15 @@ def obtener_horarios_disponibles():
     headers = {"Content-Type": "application/json"}
     response = requests.post(url, headers=headers, json=payload)
 
-try:
-    response_data = response.json()  # Intenta convertir la respuesta a JSON
-    print("Respuesta de la API de Bookeo:", response_data)  # <-- Aquí vemos la respuesta en los logs
-
     if response.status_code == 200:
-        data = response_data.get("data", [])
-        horarios = [f"🕒 {slot['startTime'][11:16]} - {slot['endTime'][11:16]}" for slot in data]
+        data = response.json()
+        print("Respuesta de Bookeo:", data)  # Agregado para depuración
+        slots = data.get("data", [])
+        horarios = [f"🕒 {slot['startTime'][11:16]} - {slot['endTime'][11:16]}" for slot in slots]
         return "\n".join(horarios) if horarios else "No hay horarios disponibles hoy."
     else:
-        return f"Error en la respuesta de Bookeo: {response_data}"
-except json.JSONDecodeError:
-    return "Error: la API de Bookeo no devolvió un JSON válido."
-
+        print("Error al obtener horarios:", response.text)  # Agregado para ver el error en logs
+        return "Error al obtener los horarios."
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
