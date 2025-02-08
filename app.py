@@ -34,7 +34,7 @@ def obtener_horarios_disponibles():
 
     if response.status_code == 200:
         data = response.json().get("data", [])
-        horarios = [f"🕒 {slot['startTime'][-14:-9]} - {slot['endTime'][-14:-9]}" for slot in data]
+        horarios = [f"🕒 {slot['startTime'][11:16]} - {slot['endTime'][11:16]}" for slot in data]
         return "\n".join(horarios) if horarios else "No hay horarios disponibles hoy."
     else:
         return "Error al obtener los horarios."
@@ -48,13 +48,15 @@ def webhook():
     
     if "disponibilidad" in incoming_msg:
         horarios = obtener_horarios_disponibles()
-        respuesta = f"📅 *Disponibilidad de salas:*
-✔ Sala A
-✔ Sala B
-✔ Sala C
-✔ Sala D
-\n📆 *Horarios disponibles para hoy:*
-{horarios}"
+        respuesta = (
+            "📅 *Disponibilidad de salas:*\n"
+            "✔ Sala A\n"
+            "✔ Sala B\n"
+            "✔ Sala C\n"
+            "✔ Sala D\n\n"
+            "📆 *Horarios disponibles para hoy:*\n"
+            f"{horarios}"
+        )
     else:
         respuesta = "No entendí tu mensaje. Escribe 'Disponibilidad' para ver las salas y horarios."
     
