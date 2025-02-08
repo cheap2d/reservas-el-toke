@@ -37,23 +37,41 @@ def webhook():
     """
 
 def consultar_disponibilidad():
-    params = {
-        "apiKey": BOOKEO_API_KEY,  # API Key real
-        "secretKey": BOOKEO_SECRET_KEY,  # Secret Key real
-        "startTime": "2025-02-09T09:00:00Z",  # Asegura que tenga la "Z" (UTC)
-        "endTime": "2025-02-09T18:00:00Z",
-        "productId": "ID_DE_LA_SALA"  # Debes reemplazarlo con un ID válido
+    salas = {
+        "Sala A": "ID_SALA_A",
+        "Sala B": "ID_SALA_B",
+        "Sala C": "ID_SALA_C",
+        "Sala D": "ID_SALA_D"
     }
-    try:
-        response = requests.get(BOOKEO_API_URL, params=params)
-        print(f"Respuesta de Bookeo: {response.text}")  # Log para depuración
-        if response.status_code == 200:
-            data = response.json()
-            return f"Salas disponibles: {data}" if data else "No hay salas disponibles."
-        else:
-            return f"Error en Bookeo: {response.status_code} - {response.text}"
-    except Exception as e:
-        return f"Hubo un error al conectar con Bookeo: {str(e)}"
+
+    disponibilidad = []
+
+    for nombre_sala, product_id in salas.items():
+        params = {
+            "apiKey": BOOKEO_API_KEY,  # API Key real
+            "secretKey": BOOKEO_SECRET_KEY,  # Secret Key real
+            "startTime": "2025-02-09T09:00:00Z",  # Asegura que tenga la "Z" (UTC)
+            "endTime": "2025-02-09T18:00:00Z",
+            "productId": product_id
+        }
+        try:
+            response = requests.get(BOOKEO_API_URL, params=params)
+            print(f"Respuesta de Bookeo para {nombre_sala}: {response.text}")  # Log para depuración
+
+            if response.status_code == 200:
+                data = response.json()
+                if data:
+                    disponibilidad.append(f"{nombre_sala}: Disponible")
+                else:
+                    disponibilidad.append(f"{nombre_sala}: No disponible")
+            else:
+                disponibilidad.append(f"{nombre_sala}: Error {response.status_code}")
+
+        except Exception as e:
+            disponibilidad.append(f"{nombre_sala}: Error {str(e)}")
+
+    return "\n".join(disponibilidad)
+
 
 
 
