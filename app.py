@@ -21,7 +21,8 @@ SALAS = {
 def obtener_horarios_disponibles():
     """
     Consulta los horarios disponibles en Bookeo para todas las salas.
-    Si la respuesta no es 200, se incluye el código de error y el mensaje de Bookeo.
+    Si la respuesta es 200 o 201, procesa los datos; en caso contrario,
+    devuelve el error con código y mensaje.
     """
     hoy = datetime.datetime.utcnow().strftime("%Y-%m-%dT00:00:00Z")
     fin_dia = datetime.datetime.utcnow().strftime("%Y-%m-%dT23:59:59Z")
@@ -40,12 +41,12 @@ def obtener_horarios_disponibles():
         }
         response = requests.post(url, headers=headers, json=payload)
 
-        if response.status_code == 200:
+        if response.status_code in (200, 201):
             try:
                 data = response.json()
                 slots = data.get("data", [])
                 if slots:
-                    # Extraemos las horas (tomamos la parte de la hora del string ISO)
+                    # Se extraen las horas (tomando la subcadena que contiene la hora)
                     horarios = [f"🕒 {slot['startTime'][11:16]} - {slot['endTime'][11:16]}" for slot in slots]
                     disponibilidad.append(f"*{sala}:*\n" + "\n".join(horarios))
                 else:
@@ -65,9 +66,8 @@ def obtener_horarios_disponibles():
 @app.route("/webhook", methods=["POST"])
 def webhook():
     """
-    Recibe mensajes de WhatsApp (vía Twilio) y responde con la disponibilidad de salas y horarios.
-    Si el mensaje contiene la palabra "disponibilidad" (sin importar mayúsculas o minúsculas),
-    se consulta Bookeo y se responde con la información obtenida.
+    Recibe mensajes de WhatsApp (vía Twilio) y responde con la disponibilidad
+    de salas y horarios. Si el mensaje contiene "disponibilidad" se consulta Bookeo.
     """
     incoming_msg = request.values.get("Body", "").strip().lower()
     resp = MessagingResponse()
