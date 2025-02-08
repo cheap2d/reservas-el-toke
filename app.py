@@ -21,7 +21,8 @@ SALAS = {
 def obtener_horarios_disponibles():
     """
     Consulta los horarios disponibles en Bookeo para todas las salas.
-    Ajusta los bloques de horarios en segmentos de 1 hora sin dividir bloques de 2 horas.
+    Si la respuesta es 200 o 201, procesa los datos; en caso contrario,
+    devuelve el error con código y mensaje.
     """
     hoy = datetime.datetime.utcnow().strftime("%Y-%m-%dT00:00:00Z")
     fin_dia = datetime.datetime.utcnow().strftime("%Y-%m-%dT23:59:59Z")
@@ -44,16 +45,10 @@ def obtener_horarios_disponibles():
             try:
                 data = response.json()
                 slots = data.get("data", [])
-                horarios = set()
-                for slot in slots:
-                    start_time = datetime.datetime.fromisoformat(slot['startTime'][:-6])  # Convertir a objeto datetime
-                    end_time = datetime.datetime.fromisoformat(slot['endTime'][:-6])
-                    while start_time < end_time:
-                        horarios.add(f"🕒 {start_time.strftime('%H:%M')} - {(start_time + datetime.timedelta(hours=1)).strftime('%H:%M')}")
-                        start_time += datetime.timedelta(hours=1)
-                
-                if horarios:
-                    disponibilidad.append(f"*{sala}:*\n" + "\n".join(sorted(horarios)))
+                if slots:
+                    # Se extraen las horas (tomando la subcadena que contiene la hora)
+                    horarios = [f"🕒 {slot['startTime'][11:16]} - {slot['endTime'][11:16]}" for slot in slots]
+                    disponibilidad.append(f"*{sala}:*\n" + "\n".join(horarios))
                 else:
                     disponibilidad.append(f"*{sala}:* No hay horarios disponibles.")
             except Exception as e:
