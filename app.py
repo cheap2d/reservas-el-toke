@@ -1,69 +1,65 @@
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
 import requests
-import os
-from datetime import datetime, timedelta
+import json
+import datetime
 
 app = Flask(__name__)
 
-# Credenciales API de Bookeo
+# Credenciales de Bookeo
 BOOKEO_API_KEY = "AJ9CL4R7WK7YT7NXCTENX415663YHCYT17E53FE901F"
 BOOKEO_SECRET_KEY = "Hv8pW1kCjHmi3dhQe2jl1RTYL1TMsebb"
-BOOKEO_API_URL = "https://api.bookeo.com/v2/availability"  # Endpoint de disponibilidad
+BOOKEO_BASE_URL = "https://api.bookeo.com/v2"
 
-# Diccionario de salas con sus IDs en Bookeo
-SALAS = {
-    "Sala A": "41566UKFAJM17E54036652_JXTLMHYU",
-    "Sala B": "41566UKFAJM17E54036652_NFNHNNJE",
-    "Sala C": "41566UKFAJM17E54036652_FKPWTENX",
-    "Sala D": "41566UKFAJM17E54036652_TAHYRHYL"
-}
+# ID de la Sala A (ejemplo)
+SALA_A_ID = "41566UKFAJM17E54036652_JXTLMHYU"
 
+def obtener_horarios_disponibles():
+    """Consulta los horarios disponibles en Bookeo."""
+    hoy = datetime.datetime.utcnow().strftime("%Y-%m-%dT00:00:00Z")
+    fin_dia = datetime.datetime.utcnow().strftime("%Y-%m-%dT23:59:59Z")
 
-def obtener_disponibilidad(sala_id, fecha):
-    """Consulta la API de Bookeo para obtener la disponibilidad de una sala en una fecha específica."""
-    params = {
-        "apiKey": BOOKEO_API_KEY,
-        "secretKey": BOOKEO_SECRET_KEY,
-        "productId": sala_id,
-        "startTime": fecha.isoformat(),  # Formato de fecha ISO 8601
-        "endTime": (fecha + timedelta(days=1)).isoformat(),
+    url = f"{BOOKEO_BASE_URL}/availability/matchingslots?apiKey={BOOKEO_API_KEY}&secretKey={BOOKEO_SECRET_KEY}"
+    payload = {
+        "productId": SALA_A_ID,
+        "startTime": hoy,
+        "endTime": fin_dia,
+        "peopleNumbers": [
+            {"peopleCategoryId": "Cadults", "number": 1}
+        ]
     }
-    response = requests.get(BOOKEO_API_URL, params=params)
-    
-    if response.status_code == 200:
-        data = response.json()
-        horarios = [slot["startTime"] for slot in data.get("availability", [])]
-        return horarios
-    else:
-        return []  # Si hay error, devolver lista vacía
 
+    headers = {"Content-Type": "application/json"}
+    response = requests.post(url, headers=headers, json=payload)
+
+    if response.status_code == 200:
+        data = response.json().get("data", [])
+        horarios = [f"🕒 {slot['startTime'][-14:-9]} - {slot['endTime'][-14:-9]}" for slot in data]
+        return "\n".join(horarios) if horarios else "No hay horarios disponibles hoy."
+    else:
+        return "Error al obtener los horarios."
 
 @app.route("/webhook", methods=["POST"])
-def whatsapp_webhook():
-    """Maneja los mensajes entrantes de WhatsApp y responde con disponibilidad de salas."""
+def webhook():
+    """Recibe mensajes de WhatsApp y responde con disponibilidad de salas y horarios."""
     incoming_msg = request.values.get("Body", "").strip().lower()
     resp = MessagingResponse()
     msg = resp.message()
     
     if "disponibilidad" in incoming_msg:
-        fecha_consulta = datetime.now()  # Obtener la fecha actual
-        mensaje_respuesta = "📅 *Disponibilidad de salas para hoy:*\n"
-        
-        for nombre_sala, sala_id in SALAS.items():
-            horarios = obtener_disponibilidad(sala_id, fecha_consulta)
-            if horarios:
-                horarios_format = "\n".join([datetime.fromisoformat(h).strftime('%H:%M') for h in horarios])
-                mensaje_respuesta += f"✔ {nombre_sala}:\n{horarios_format}\n\n"
-            else:
-                mensaje_respuesta += f"❌ {nombre_sala}: No disponible\n\n"
-        
-        msg.body(mensaje_respuesta)
+        horarios = obtener_horarios_disponibles()
+        respuesta = f"📅 *Disponibilidad de salas:*
+✔ Sala A
+✔ Sala B
+✔ Sala C
+✔ Sala D
+\n📆 *Horarios disponibles para hoy:*
+{horarios}"
     else:
-        msg.body("No entendí tu mensaje. Escribe 'Disponibilidad' para ver los horarios.")
+        respuesta = "No entendí tu mensaje. Escribe 'Disponibilidad' para ver las salas y horarios."
     
+    msg.body(respuesta)
     return str(resp)
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
