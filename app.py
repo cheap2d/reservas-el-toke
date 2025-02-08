@@ -3,11 +3,18 @@ from flask import Flask, request
 
 app = Flask(__name__)
 
-# Credenciales de Bookeo
+# Credenciales de Bookeo (Reemplaza con tus valores reales)
 BOOKEO_API_URL = "https://api.bookeo.com/v2/availability"
-BOOKEO_APP_ID = "K7YT7NXCTENX"  # Application ID
-BOOKEO_SECRET_KEY = "Hv8pW1kCjHmi3dhQe2jl1RTYL1TMsebb"  # Asegúrate de agregar el Secret Key correcto
 BOOKEO_API_KEY = "AJ9CL4R7WK7YT7NXCTENX415663YHCYT17E53FE901F"  # API Key real
+BOOKEO_SECRET_KEY = "Hv8pW1kCjHmi3dhQe2jl1RTYL1TMsebb"  # Secret Key real
+
+# Lista de Salas con sus IDs (Reemplaza con los correctos)
+salas = {
+    "Sala A": "23879471",  # Reemplaza con el productId real de Sala A
+    "Sala B": "23879471",  # Reemplaza con el productId real de Sala B
+    "Sala C": "23879471",  # Reemplaza con el productId real de Sala C
+    "Sala D": "23879471"   # Reemplaza con el productId real de Sala D
+}
 
 @app.route("/", methods=["GET"])
 def home():
@@ -37,21 +44,13 @@ def webhook():
     """
 
 def consultar_disponibilidad():
-  salas = {
-    "Sala A": "23879471",
-    "Sala B": "23879471",
-    "Sala C": "23879471",
-    "Sala D": "23879471"
-}
-
-
-    disponibilidad = []
+    disponibilidad = []  # Lista para almacenar disponibilidad de cada sala
 
     for nombre_sala, product_id in salas.items():
         params = {
-            "apiKey": BOOKEO_API_KEY,  # API Key real
-            "secretKey": BOOKEO_SECRET_KEY,  # Secret Key real
-            "startTime": "2025-02-09T09:00:00Z",  # Asegura que tenga la "Z" (UTC)
+            "apiKey": BOOKEO_API_KEY,
+            "secretKey": BOOKEO_SECRET_KEY,
+            "startTime": "2025-02-09T09:00:00Z",
             "endTime": "2025-02-09T18:00:00Z",
             "productId": product_id
         }
@@ -71,10 +70,7 @@ def consultar_disponibilidad():
         except Exception as e:
             disponibilidad.append(f"{nombre_sala}: Error {str(e)}")
 
-    return "\n".join(disponibilidad)
-
-
-
+    return "\n".join(disponibilidad)  # Retorna la disponibilidad de todas las salas
 
 if __name__ == "__main__":
     import os
