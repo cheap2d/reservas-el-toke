@@ -1,79 +1,66 @@
 import requests
+import json
 from flask import Flask, request
+from twilio.twiml.messaging_response import MessagingResponse
 
 app = Flask(__name__)
 
-# Credenciales de Bookeo (Reemplaza con tus valores reales)
-BOOKEO_API_URL = "https://api.bookeo.com/v2/availability"
-BOOKEO_API_KEY = "AJ9CL4R7WK7YT7NXCTENX415663YHCYT17E53FE901F"  # API Key real
-BOOKEO_SECRET_KEY = "Hv8pW1kCjHmi3dhQe2jl1RTYL1TMsebb"  # Secret Key real
+# Credenciales de Bookeo
+API_KEY = "AJ9CL4R7WK7YT7NXCTENX415663YHCYT17E53FE901F"
+SECRET_KEY = "Hv8pW1kCjHmi3dhQe2jl1RTYL1TMsebb"
 
-# Lista de Salas con sus IDs (Reemplaza con los correctos)
-salas = {
-    "Sala A": "23879471",  # Reemplaza con el productId real de Sala A
-    "Sala B": "23879471",  # Reemplaza con el productId real de Sala B
-    "Sala C": "23879471",  # Reemplaza con el productId real de Sala C
-    "Sala D": "23879471"   # Reemplaza con el productId real de Sala D
+# Identificadores de salas en Bookeo
+PRODUCT_IDS = {
+    "Sala A": "41566UKFAJM17E54036652_JXTLMHYU",
+    "Sala B": "41566UKFAJM17E54036652_NFNHNNJE",
+    "Sala C": "41566UKFAJM17E54036652_FKPWTENX",
+    "Sala D": "41566UKFAJM17E54036652_TAHYRHYL"
 }
 
-@app.route("/", methods=["GET"])
-def home():
-    return "Flask app is running!"
+BASE_URL = "https://api.bookeo.com/v2"
 
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    incoming_message = request.form.get("Body")  # Mensaje recibido
+def get_availability(product_id):
+    """Consulta la disponibilidad de una sala en Bookeo."""
+    url = f"{BASE_URL}/availability/slots"
+    params = {
+        "apiKey": API_KEY,
+        "secretKey": SECRET_KEY,
+        "startTime": "2025-02-09T00:00:00Z",
+        "endTime": "2025-02-09T23:59:59Z",
+        "productId": product_id
+    }
+    
+    response = requests.get(url, params=params)
 
-    if "disponibilidad" in incoming_message.lower():
-        availability = consultar_disponibilidad()
-        return f"""
-        <Response>
-            <Message>
-                {availability}
-            </Message>
-        </Response>
-        """
+    if response.status_code == 200:
+        data = response.json()
+        slots = data.get("data", [])
+        if slots:
+            return "\n".join([f"- {slot['startTime']} hasta {slot['endTime']}" for slot in slots])
+        else:
+            return "No hay disponibilidad en este momento."
+    else:
+        return f"Error en Bookeo {response.status_code}: {response.text}"
 
-    response_message = f"Hola, recibimos tu mensaje: {incoming_message}"
-    return f"""
-    <Response>
-        <Message>
-            {response_message}
-        </Message>
-    </Response>
-    """
 
-def consultar_disponibilidad():
-    disponibilidad = []  # Lista para almacenar disponibilidad de cada sala
+@app.route('/whatsapp', methods=['POST'])
+def whatsapp_reply():
+    """Responde mensajes en WhatsApp con la disponibilidad de las salas."""
+    incoming_msg = request.values.get('Body', '').strip().lower()
+    resp = MessagingResponse()
+    msg = resp.message()
 
-    for nombre_sala, product_id in salas.items():
-        params = {
-            "apiKey": BOOKEO_API_KEY,
-            "secretKey": BOOKEO_SECRET_KEY,
-            "startTime": "2025-02-09T09:00:00Z",
-            "endTime": "2025-02-09T18:00:00Z",
-            "productId": product_id
-        }
-        try:
-            response = requests.get(BOOKEO_API_URL, params=params)
-            print(f"Respuesta de Bookeo para {nombre_sala}: {response.text}")  # Log para depuración
+    if incoming_msg == "disponibilidad":
+        disponibilidad_texto = "📅 *Disponibilidad de salas:*\n\n"
+        for sala, product_id in PRODUCT_IDS.items():
+            disponibilidad_texto += f"*{sala}:*\n{get_availability(product_id)}\n\n"
+        
+        msg.body(disponibilidad_texto)
+    else:
+        msg.body("Envíame *Disponibilidad* para ver los horarios disponibles.")
 
-            if response.status_code == 200:
-                data = response.json()
-                if data:
-                    disponibilidad.append(f"{nombre_sala}: Disponible")
-                else:
-                    disponibilidad.append(f"{nombre_sala}: No disponible")
-            else:
-                disponibilidad.append(f"{nombre_sala}: Error {response.status_code}")
+    return str(resp)
 
-        except Exception as e:
-            disponibilidad.append(f"{nombre_sala}: Error {str(e)}")
 
-    return "\n".join(disponibilidad)  # Retorna la disponibilidad de todas las salas
-
-if __name__ == "__main__":
-    import os
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
-
+if __name__ == '__main__':
+    app.run(debug=True, host="0.0.0.0", port=5000)
