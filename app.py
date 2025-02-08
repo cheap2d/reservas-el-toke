@@ -38,10 +38,10 @@ def webhook():
 
 def consultar_disponibilidad():
     salas = {
-        "Sala A": "ID_SALA_A",
-        "Sala B": "ID_SALA_B",
-        "Sala C": "ID_SALA_C",
-        "Sala D": "ID_SALA_D"
+        "Sala A": "JXTLMHYU",
+        "Sala B": "NFNHNNJE",
+        "Sala C": "FKPWTENX",
+        "Sala D": "TAHYRHYL"
     }
 
     disponibilidad = []
