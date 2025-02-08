@@ -39,9 +39,9 @@ def webhook():
 def consultar_disponibilidad():
     params = {
         "apiKey": BOOKEO_API_KEY,  # API Key real
-        "secretKey": BOOKEO_SECRET_KEY,  # Ahora enviamos también el Secret Key
-        "startTime": "2025-02-09T09:00:00",  # Cambia la fecha si es necesario
-        "endTime": "2025-02-09T18:00:00",
+        "secretKey": BOOKEO_SECRET_KEY,  # Secret Key real
+        "startTime": "2025-02-09T09:00:00Z",  # Asegura que tenga la "Z" (UTC)
+        "endTime": "2025-02-09T18:00:00Z",
         "productId": "ID_DE_LA_SALA"  # Debes reemplazarlo con un ID válido
     }
     try:
@@ -54,6 +54,7 @@ def consultar_disponibilidad():
             return f"Error en Bookeo: {response.status_code} - {response.text}"
     except Exception as e:
         return f"Hubo un error al conectar con Bookeo: {str(e)}"
+
 
 
 if __name__ == "__main__":
