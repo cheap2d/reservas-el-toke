@@ -21,9 +21,8 @@ SALAS = {
 def obtener_horarios_disponibles():
     """
     Consulta los horarios disponibles en Bookeo para todas las salas.
-    En caso de error, se incluye el código y el contenido de la respuesta para depuración.
+    Si la respuesta no es 200, se incluye el código de error y el mensaje de Bookeo.
     """
-    # Usamos la fecha UTC para el día actual
     hoy = datetime.datetime.utcnow().strftime("%Y-%m-%dT00:00:00Z")
     fin_dia = datetime.datetime.utcnow().strftime("%Y-%m-%dT23:59:59Z")
     headers = {"Content-Type": "application/json"}
@@ -39,23 +38,27 @@ def obtener_horarios_disponibles():
                 {"peopleCategoryId": "Cadults", "number": 1}
             ]
         }
+        response = requests.post(url, headers=headers, json=payload)
 
-        try:
-            response = requests.post(url, headers=headers, json=payload)
-            # Para depuración: imprime la URL, el payload y la respuesta en la consola
-            print(f"Consulta para {sala}:\n  URL: {url}\n  Payload: {payload}\n  Status: {response.status_code}")
-            if response.status_code == 200:
+        if response.status_code == 200:
+            try:
                 data = response.json()
                 slots = data.get("data", [])
                 if slots:
+                    # Extraemos las horas (tomamos la parte de la hora del string ISO)
                     horarios = [f"🕒 {slot['startTime'][11:16]} - {slot['endTime'][11:16]}" for slot in slots]
                     disponibilidad.append(f"*{sala}:*\n" + "\n".join(horarios))
                 else:
                     disponibilidad.append(f"*{sala}:* No hay horarios disponibles.")
-            else:
-                disponibilidad.append(f"*{sala}:* Error {response.status_code} - {response.text}")
-        except Exception as e:
-            disponibilidad.append(f"*{sala}:* Exception: {str(e)}")
+            except Exception as e:
+                disponibilidad.append(f"*{sala}:* Error al procesar la respuesta: {str(e)}")
+        else:
+            try:
+                error_data = response.json()
+                error_msg = error_data.get("message", "Sin mensaje")
+            except Exception:
+                error_msg = response.text
+            disponibilidad.append(f"*{sala}:* Error {response.status_code} - {error_msg}")
 
     return "\n\n".join(disponibilidad)
 
@@ -63,8 +66,8 @@ def obtener_horarios_disponibles():
 def webhook():
     """
     Recibe mensajes de WhatsApp (vía Twilio) y responde con la disponibilidad de salas y horarios.
-    Si el mensaje recibido contiene la palabra "disponibilidad" (en cualquier combinación de mayúsculas/minúsculas),
-    se consulta Bookeo y se responde con los horarios disponibles; en otro caso se muestra un mensaje de ayuda.
+    Si el mensaje contiene la palabra "disponibilidad" (sin importar mayúsculas o minúsculas),
+    se consulta Bookeo y se responde con la información obtenida.
     """
     incoming_msg = request.values.get("Body", "").strip().lower()
     resp = MessagingResponse()
@@ -85,7 +88,6 @@ def webhook():
         respuesta = "No entendí tu mensaje. Escribe 'Disponibilidad' para ver las salas y horarios."
     
     msg.body(respuesta)
-    # Devolvemos el TwiML con Content-Type 'text/xml'
     return str(resp), 200, {'Content-Type': 'text/xml'}
 
 if __name__ == "__main__":
