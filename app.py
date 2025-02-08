@@ -42,25 +42,18 @@ def get_availability(product_id):
     else:
         return f"Error en Bookeo {response.status_code}: {response.text}"
 
-
-@app.route('/whatsapp', methods=['POST'])
-def whatsapp_reply():
-    """Responde mensajes en WhatsApp con la disponibilidad de las salas."""
-    incoming_msg = request.values.get('Body', '').strip().lower()
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    incoming_msg = request.values.get("Body", "").lower()
     resp = MessagingResponse()
     msg = resp.message()
 
-    if incoming_msg == "disponibilidad":
-        disponibilidad_texto = "📅 *Disponibilidad de salas:*\n\n"
-        for sala, product_id in PRODUCT_IDS.items():
-            disponibilidad_texto += f"*{sala}:*\n{get_availability(product_id)}\n\n"
-        
-        msg.body(disponibilidad_texto)
+    if "disponibilidad" in incoming_msg:
+        msg.body("Aquí está la disponibilidad de las salas...")
     else:
-        msg.body("Envíame *Disponibilidad* para ver los horarios disponibles.")
+        msg.body("No entendí tu mensaje.")
 
     return str(resp)
 
-
-if __name__ == '__main__':
-    app.run(debug=True, host="0.0.0.0", port=5000)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000, debug=True)
