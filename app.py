@@ -6,7 +6,7 @@ app = Flask(__name__)
 # Credenciales de Bookeo
 BOOKEO_API_URL = "https://api.bookeo.com/v2/availability"
 BOOKEO_APP_ID = "K7YT7NXCTENX"  # Application ID
-BOOKEO_SECRET_KEY = "TU_SECRET_KEY"  # Asegúrate de agregar el Secret Key correcto
+BOOKEO_SECRET_KEY = "Hv8pW1kCjHmi3dhQe2jl1RTYL1TMsebb"  # Asegúrate de agregar el Secret Key correcto
 BOOKEO_API_KEY = "AJ9CL4R7WK7YT7NXCTENX415663YHCYT17E53FE901F"  # API Key real
 
 @app.route("/", methods=["GET"])
