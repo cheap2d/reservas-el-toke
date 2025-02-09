@@ -52,21 +52,21 @@ def webhook():
     resp = MessagingResponse()
     msg = resp.message()
     
+    # 🔹 Obtener la fecha actual cada vez que se ejecuta la función
+    hoy = datetime.datetime.utcnow()
+
     if "disponibilidad" in incoming_msg:
         partes = incoming_msg.split()
-        hoy = datetime.datetime.utcnow()
         
         if len(partes) > 1 and partes[1].isdigit():
             try:
                 dia_solicitado = int(partes[1])
-                fecha_consulta = hoy.replace(day=dia_solicitado).strftime("%Y-%m-%d")
-                # Asegurar que el mes y año no cambien inesperadamente
-                if dia_solicitado < hoy.day:
-                    fecha_consulta = (hoy.replace(day=1) + datetime.timedelta(days=31)).replace(day=dia_solicitado).strftime("%Y-%m-%d")
+                diferencia_dias = dia_solicitado - hoy.day
+                fecha_consulta = (hoy + datetime.timedelta(days=diferencia_dias)).strftime("%Y-%m-%d")
             except ValueError:
                 fecha_consulta = hoy.strftime("%Y-%m-%d")
         else:
-            fecha_consulta = hoy.strftime("%Y-%m-%d")
+            fecha_consulta = hoy.strftime("%Y-%m-%d")  # 🔹 Se asegura de siempre actualizar la fecha actual
         
         slots = obtener_horarios_disponibles(fecha_consulta)
         respuesta = (
@@ -80,6 +80,7 @@ def webhook():
     
     msg.body(respuesta)
     return str(resp), 200, {'Content-Type': 'text/xml'}
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
