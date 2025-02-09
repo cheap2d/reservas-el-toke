@@ -21,9 +21,9 @@ SALAS = {
 def obtener_horarios_disponibles(fecha):
     """
     Consulta los horarios disponibles en Bookeo para todas las salas.
-    Ajusta los bloques de horarios en segmentos de 1 hora y elimina duplicados.
+    Ajusta los bloques de horarios en segmentos de 1 hora correctamente.
     """
-    hoy = f"{fecha}T00:00:00Z"
+    inicio_dia = f"{fecha}T00:00:00Z"
     fin_dia = f"{fecha}T23:59:59Z"
     headers = {"Content-Type": "application/json"}
     disponibilidad = []
@@ -32,11 +32,9 @@ def obtener_horarios_disponibles(fecha):
         url = f"{BOOKEO_BASE_URL}/availability/matchingslots?apiKey={BOOKEO_API_KEY}&secretKey={BOOKEO_SECRET_KEY}"
         payload = {
             "productId": sala_id,
-            "startTime": hoy,
+            "startTime": inicio_dia,
             "endTime": fin_dia,
-            "peopleNumbers": [
-                {"peopleCategoryId": "Cadults", "number": 1}
-            ]
+            "peopleNumbers": [{"peopleCategoryId": "Cadults", "number": 1}]
         }
         response = requests.post(url, headers=headers, json=payload)
 
@@ -44,12 +42,21 @@ def obtener_horarios_disponibles(fecha):
             try:
                 data = response.json()
                 slots = data.get("data", [])
-                horarios = set()  # Usamos un set para evitar duplicados
+                horarios_reservados = set()
                 for slot in slots:
                     start_hour = int(slot['startTime'][11:13])
-                    horarios.add(f"🕒 {start_hour:02d}:00 - {start_hour+1:02d}:00")
-                if horarios:
-                    disponibilidad.append(f"*{sala}:*\n" + "\n".join(sorted(horarios)))
+                    end_hour = int(slot['endTime'][11:13])
+                    for hour in range(start_hour, end_hour):
+                        horarios_reservados.add(hour)
+
+                # Crear lista de horarios disponibles
+                horarios_disponibles = []
+                for hour in range(10, 21):  # Horario de 10:00 a 20:00
+                    if hour not in horarios_reservados:
+                        horarios_disponibles.append(f"🕒 {hour:02d}:00 - {hour+1:02d}:00")
+
+                if horarios_disponibles:
+                    disponibilidad.append(f"*{sala}:*\n" + "\n".join(horarios_disponibles))
                 else:
                     disponibilidad.append(f"*{sala}:* No hay horarios disponibles.")
             except Exception as e:
@@ -75,19 +82,15 @@ def webhook():
     msg = resp.message()
     
     if "disponibilidad" in incoming_msg:
-        fecha = datetime.datetime.utcnow().strftime("%Y-%m-%d")  # Por defecto, hoy
-        palabras = incoming_msg.split()
-        for palabra in palabras:
-            try:
-                fecha_custom = datetime.datetime.strptime(palabra, "%d-%m-%Y").strftime("%Y-%m-%d")
-                fecha = fecha_custom
-                break
-            except ValueError:
-                continue
-        
-        horarios = obtener_horarios_disponibles(fecha)
+        partes = incoming_msg.split()
+        if len(partes) > 1 and partes[1].isdigit():
+            fecha_consulta = f"2025-02-{partes[1].zfill(2)}"
+        else:
+            fecha_consulta = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+
+        horarios = obtener_horarios_disponibles(fecha_consulta)
         respuesta = (
-            f"📅 *Disponibilidad de salas para el {fecha}:*\n"
+            f"📅 *Disponibilidad de salas para el {fecha_consulta}:*\n"
             "✔ Sala A\n"
             "✔ Sala B\n"
             "✔ Sala C\n"
@@ -96,7 +99,7 @@ def webhook():
             f"{horarios}"
         )
     else:
-        respuesta = "No entendí tu mensaje. Escribe 'Disponibilidad' o 'Disponibilidad DD-MM-YYYY' para ver las salas y horarios."
+        respuesta = "No entendí tu mensaje. Escribe 'Disponibilidad' para ver las salas y horarios."
     
     msg.body(respuesta)
     return str(resp), 200, {'Content-Type': 'text/xml'}
