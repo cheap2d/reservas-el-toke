@@ -26,56 +26,55 @@ def parse_iso_hour(iso_str):
         print(f"[DEBUG] Error parseando '{iso_str}': {e}")
         return None
 
-def detectar_horarios_operativos_por_slots(fecha):
-    sala_id = next(iter(SALAS.values()))
+def detectar_horarios_operativos_por_slots():
+    fecha = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d")
     inicio_dia = f"{fecha}T00:00:00Z"
     fin_dia = f"{fecha}T23:59:59Z"
+    
     headers = {"Content-Type": "application/json"}
     url = f"{BOOKEO_BASE_URL}/availability/matchingslots?apiKey={BOOKEO_API_KEY}&secretKey={BOOKEO_SECRET_KEY}"
-    payload = {
-        "productId": sala_id,
-        "startTime": inicio_dia,
-        "endTime": fin_dia,
-        "peopleNumbers": [{"peopleCategoryId": "Cadults", "number": 1}]
-    }
-    try:
+    
+    horas_inicio = []
+    horas_fin = []
+
+    for sala, sala_id in SALAS.items():
+        payload = {
+            "productId": sala_id,
+            "startTime": inicio_dia,
+            "endTime": fin_dia,
+            "peopleNumbers": [{"peopleCategoryId": "Cadults", "number": 1}]
+        }
         response = requests.post(url, headers=headers, json=payload)
+
         if response.status_code in (200, 201):
             data = response.json()
             slots = data.get("data", [])
-            if slots:
-                horas_inicio = [parse_iso_hour(slot.get("startTime")) for slot in slots if slot.get("startTime")]
-                horas_fin = [parse_iso_hour(slot.get("endTime")) for slot in slots if slot.get("endTime")]
-                if horas_inicio and horas_fin:
-                    return min(horas_inicio), max(horas_fin)
-    except Exception as e:
-        print(f"[DEBUG] Error detectando horarios por slots: {e}")
-    return 16, 20
+            for slot in slots:
+                hst = parse_iso_hour(slot.get("startTime"))
+                het = parse_iso_hour(slot.get("endTime"))
+                if hst is not None:
+                    horas_inicio.append(hst)
+                if het is not None:
+                    horas_fin.append(het)
+        else:
+            print(f"[ERROR] No se pudieron obtener los slots para {sala}")
 
-def obtener_horarios_apertura_cierre(fecha):
-    url = f"{BOOKEO_BASE_URL}/business/operatingHours?apiKey={BOOKEO_API_KEY}&secretKey={BOOKEO_SECRET_KEY}"
-    try:
-        response = requests.get(url)
-        if response.status_code in (200, 201):
-            data = response.json()
-            dt = datetime.datetime.strptime(fecha, "%Y-%m-%d")
-            bookeo_day = (dt.weekday() + 1) % 7
-            for item in data.get("data", []):
-                if int(item.get("dayOfWeek", -1)) == bookeo_day:
-                    apertura_ep = int(item.get("startTime", "16:00").split(":")[0])
-                    cierre_ep = int(item.get("endTime", "20:00").split(":")[0])
-                    return apertura_ep, cierre_ep
-    except Exception as e:
-        print(f"[DEBUG] Error obteniendo horarios operativos del endpoint: {e}")
-    return detectar_horarios_operativos_por_slots(fecha)
+    if horas_inicio and horas_fin:
+        apertura_detectada = min(horas_inicio)
+        cierre_detectada = max(horas_fin)
+        return apertura_detectada, cierre_detectada
+    else:
+        print("[ERROR] No se detectaron horarios disponibles en ninguna sala.")
+        return None, None
 
-def obtener_horarios_disponibles(fecha):
+def obtener_horarios_disponibles():
+    fecha = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d")
     inicio_dia = f"{fecha}T00:00:00Z"
     fin_dia = f"{fecha}T23:59:59Z"
     headers = {"Content-Type": "application/json"}
     disponibilidad = []
-    apertura, cierre = obtener_horarios_apertura_cierre(fecha)
-    print(f"[DEBUG] Horarios operativos para {fecha}: {apertura}:00 - {cierre}:00")
+    apertura, cierre = detectar_horarios_operativos_por_slots()
+    print(f"[DEBUG] Horarios operativos detectados: {apertura}:00 - {cierre}:00")
 
     for sala, sala_id in SALAS.items():
         url = f"{BOOKEO_BASE_URL}/availability/matchingslots?apiKey={BOOKEO_API_KEY}&secretKey={BOOKEO_SECRET_KEY}"
@@ -103,32 +102,23 @@ def obtener_horarios_disponibles(fecha):
 @app.route("/webhook", methods=["POST"])
 def webhook():
     incoming_msg = request.values.get("Body", "").strip().lower()
-    print(f"[DEBUG] Mensaje recibido: {incoming_msg}")  # Verificar qué mensaje llega
-
     resp = MessagingResponse()
     msg = resp.message()
 
     if "disponibilidad" in incoming_msg:
-        fecha_consulta = datetime.datetime.utcnow().strftime("%Y-%m-%d")
-        print(f"[DEBUG] Consultando disponibilidad para {fecha_consulta}")  # Log de la fecha
-
-        slots = obtener_horarios_disponibles(fecha_consulta)
-        print(f"[DEBUG] Resultado de disponibilidad:\n{slots}")  # Log de lo que devuelve la función
-
+        slots = obtener_horarios_disponibles()
+        apertura, cierre = detectar_horarios_operativos_por_slots()
         respuesta = (
-            f"📅 *Disponibilidad de salas para el {fecha_consulta}:*\n"
+            f"📅 *Disponibilidad de salas para hoy:* (Horarios operativos: {apertura:02d}:00 - {cierre:02d}:00)\n"
             "✔ Sala A\n✔ Sala B\n✔ Sala C\n✔ Sala D\n\n"
             "📆 *Horarios disponibles:*\n"
             f"{slots}"
         )
     else:
         respuesta = "No entendí tu mensaje. Escribe 'disponibilidad' para ver las salas y horarios."
-
-    print(f"[DEBUG] Respuesta enviada:\n{respuesta}")  # Log de la respuesta final
+    
     msg.body(respuesta)
     return str(resp), 200, {'Content-Type': 'text/xml'}
-
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
