@@ -38,7 +38,7 @@ def obtener_horarios_disponibles(fecha):
                 data = response.json()
                 slots = data.get("data", [])
                 if slots:
-                    horarios = [f"\U0001F551 {slot['startTime'][11:16]} - {slot['endTime'][11:16]}" for slot in slots]
+                    horarios = [f"🕒 {slot['startTime'][11:16]} - {slot['endTime'][11:16]}" for slot in slots]
                     disponibilidad.append(f"*{sala}:*\n" + "\n".join(horarios))
                 else:
                     disponibilidad.append(f"*{sala}:* No hay horarios disponibles.")
@@ -70,9 +70,9 @@ def webhook():
         
         slots = obtener_horarios_disponibles(fecha_consulta)
         respuesta = (
-            f"\U0001F4C5 *Disponibilidad de salas para {fecha_consulta}:*\n"
+            f"📅 *Disponibilidad de salas para {fecha_consulta}:*\n"
             "✔ Sala A\n✔ Sala B\n✔ Sala C\n✔ Sala D\n\n"
-            "\U0001F4C6 *Horarios disponibles:*\n"
+            "📆 *Horarios disponibles:*\n"
             f"{slots}"
         )
     else:
