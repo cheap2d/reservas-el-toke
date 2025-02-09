@@ -55,7 +55,8 @@ def webhook():
     if "disponibilidad" in incoming_msg:
         partes = incoming_msg.split()
         if len(partes) > 1 and partes[1].isdigit():
-            fecha_consulta = f"2025-02-{partes[1].zfill(2)}"
+            hoy = datetime.datetime.utcnow()
+            fecha_consulta = hoy.replace(day=int(partes[1])).strftime("%Y-%m-%d")
         else:
             fecha_consulta = datetime.datetime.utcnow().strftime("%Y-%m-%d")
         slots = obtener_horarios_disponibles(fecha_consulta)
