@@ -2,7 +2,6 @@ from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
 import requests
 import datetime
-import re
 
 app = Flask(__name__)
 
@@ -21,10 +20,11 @@ SALAS = {
 
 def obtener_horarios_disponibles(fecha):
     """
-    Consulta los horarios disponibles en Bookeo para todas las salas en la fecha especificada.
+    Consulta los horarios disponibles en Bookeo para todas las salas.
+    Ajusta los bloques de horarios en segmentos de 1 hora y elimina duplicados.
     """
-    hoy = datetime.datetime.strptime(fecha, "%d-%m-%Y").strftime("%Y-%m-%dT00:00:00Z")
-    fin_dia = datetime.datetime.strptime(fecha, "%d-%m-%Y").strftime("%Y-%m-%dT23:59:59Z")
+    hoy = f"{fecha}T00:00:00Z"
+    fin_dia = f"{fecha}T23:59:59Z"
     headers = {"Content-Type": "application/json"}
     disponibilidad = []
 
@@ -44,14 +44,12 @@ def obtener_horarios_disponibles(fecha):
             try:
                 data = response.json()
                 slots = data.get("data", [])
-                horarios = []
+                horarios = set()  # Usamos un set para evitar duplicados
                 for slot in slots:
                     start_hour = int(slot['startTime'][11:13])
-                    end_hour = int(slot['endTime'][11:13])
-                    for hour in range(start_hour, end_hour):
-                        horarios.append(f"🕒 {hour:02d}:00 - {hour+1:02d}:00")
+                    horarios.add(f"🕒 {start_hour:02d}:00 - {start_hour+1:02d}:00")
                 if horarios:
-                    disponibilidad.append(f"*{sala}:*\n" + "\n".join(horarios))
+                    disponibilidad.append(f"*{sala}:*\n" + "\n".join(sorted(horarios)))
                 else:
                     disponibilidad.append(f"*{sala}:* No hay horarios disponibles.")
             except Exception as e:
@@ -73,21 +71,23 @@ def webhook():
     de salas y horarios. Si el mensaje contiene "disponibilidad" se consulta Bookeo.
     """
     incoming_msg = request.values.get("Body", "").strip().lower()
-    fecha_hoy = datetime.datetime.utcnow().strftime("%d-%m-%Y")
-    match = re.search(r"(\d{2}-\d{2}-\d{4})", incoming_msg)
-    
-    if match:
-        fecha_consulta = match.group(1)
-    else:
-        fecha_consulta = fecha_hoy  # Si no hay fecha en el mensaje, usa hoy
-
     resp = MessagingResponse()
     msg = resp.message()
     
     if "disponibilidad" in incoming_msg:
-        horarios = obtener_horarios_disponibles(fecha_consulta)
+        fecha = datetime.datetime.utcnow().strftime("%Y-%m-%d")  # Por defecto, hoy
+        palabras = incoming_msg.split()
+        for palabra in palabras:
+            try:
+                fecha_custom = datetime.datetime.strptime(palabra, "%d-%m-%Y").strftime("%Y-%m-%d")
+                fecha = fecha_custom
+                break
+            except ValueError:
+                continue
+        
+        horarios = obtener_horarios_disponibles(fecha)
         respuesta = (
-            f"📅 *Disponibilidad de salas para el {fecha_consulta}:*\n"
+            f"📅 *Disponibilidad de salas para el {fecha}:*\n"
             "✔ Sala A\n"
             "✔ Sala B\n"
             "✔ Sala C\n"
@@ -96,7 +96,7 @@ def webhook():
             f"{horarios}"
         )
     else:
-        respuesta = "No entendí tu mensaje. Escribe 'Disponibilidad' seguido de una fecha (DD-MM-YYYY) para ver los horarios disponibles."
+        respuesta = "No entendí tu mensaje. Escribe 'Disponibilidad' o 'Disponibilidad DD-MM-YYYY' para ver las salas y horarios."
     
     msg.body(respuesta)
     return str(resp), 200, {'Content-Type': 'text/xml'}
