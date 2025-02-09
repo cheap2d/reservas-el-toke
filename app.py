@@ -18,11 +18,25 @@ SALAS = {
     "Sala D": "41566UKFAJM17E54036652_TAHYRHYL",
 }
 
+def parse_iso_hour(iso_str):
+    """
+    Recibe una cadena ISO (por ejemplo, "2025-02-09T12:00:00Z" o "2025-02-09T12:00:00-05:00")
+    y retorna la hora en formato entero (hora local según el offset, sin conversión adicional).
+    Se reemplaza "Z" por "+00:00" para que fromisoformat lo entienda.
+    """
+    try:
+        # Reemplazar 'Z' por '+00:00'
+        dt = datetime.datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+        return dt.hour
+    except Exception as e:
+        print(f"[DEBUG] Error parseando '{iso_str}': {e}")
+        return None
+
 def detectar_horarios_operativos_por_slots(fecha):
     """
-    Detecta los horarios operativos a partir de los slots devueltos por Bookeo para
-    una sala (se toma la primera de SALAS). Se retorna (min_start, max_end) según los
-    slots encontrados; en caso de error, se retornan valores por defecto.
+    Detecta de forma “automática” el rango operativo a partir de los slots devueltos por Bookeo
+    para la primera sala de SALAS. Retorna (min_start, max_end) según los slots encontrados.
+    Si no se pueden detectar, retorna valores por defecto (16, 20).
     """
     sala_id = next(iter(SALAS.values()))
     inicio_dia = f"{fecha}T00:00:00Z"
@@ -41,24 +55,34 @@ def detectar_horarios_operativos_por_slots(fecha):
             data = response.json()
             slots = data.get("data", [])
             if slots:
-                # Extraemos la hora de inicio y fin de cada slot
-                horas_inicio = [int(slot['startTime'].split("T")[1].split(":")[0]) for slot in slots]
-                horas_fin = [int(slot['endTime'].split("T")[1].split(":")[0]) for slot in slots]
+                horas_inicio = []
+                horas_fin = []
+                for slot in slots:
+                    st = slot.get("startTime")
+                    et = slot.get("endTime")
+                    hst = parse_iso_hour(st) if st else None
+                    het = parse_iso_hour(et) if et else None
+                    if hst is not None:
+                        horas_inicio.append(hst)
+                    if het is not None:
+                        horas_fin.append(het)
                 if horas_inicio and horas_fin:
                     apertura_detectada = min(horas_inicio)
-                    cierre_detectado = max(horas_fin)
-                    print(f"[DEBUG] Detectado por slots para {fecha}: Apertura {apertura_detectada}:00, Cierre {cierre_detectado}:00")
+                    cierre_detectada = max(horas_fin)
+                    print(f"[DEBUG] Detectado por slots para {fecha}: Apertura {apertura_detectada}:00, Cierre {cierre_detectada}:00")
                     return apertura_detectada, cierre_detectada
     except Exception as e:
         print(f"[DEBUG] Error detectando horarios por slots: {e}")
-    # Valor por defecto
     return 16, 20
 
 def obtener_horarios_apertura_cierre(fecha):
     """
     Intenta obtener los horarios operativos usando el endpoint /business/operatingHours.
-    Se compara con la detección por slots y, si los valores del endpoint parecen inconsistentes
-    (por ejemplo, apertura mayor que la detectada por slots o cierre menor), se usa la detección por slots.
+    Se asume que la respuesta contiene una lista de objetos con:
+      - "dayOfWeek" (con la convención: domingo=0, lunes=1, …, sábado=6)
+      - "startTime" y "endTime" en formato "HH:MM:SS"
+    Si la información del endpoint es inconsistente (por ejemplo, si los horarios son "más restrictivos"
+    que los detectados por los slots) se usará la detección por slots.
     """
     url = f"{BOOKEO_BASE_URL}/business/operatingHours?apiKey={BOOKEO_API_KEY}&secretKey={BOOKEO_SECRET_KEY}"
     try:
@@ -81,30 +105,28 @@ def obtener_horarios_apertura_cierre(fecha):
                             cierre_ep = int(cierre_str.split(":")[0])
                             # Detectar también por slots
                             apertura_slots, cierre_slots = detectar_horarios_operativos_por_slots(fecha)
-                            print(f"[DEBUG] Horario por endpoint: {apertura_ep}:00 - {cierre_ep}:00")
-                            # Si los valores del endpoint son "más restrictivos" que los detectados por slots, usaremos los de slots
+                            print(f"[DEBUG] Horario por endpoint: {apertura_ep}:00 - {cierre_ep}:00 | Por slots: {apertura_slots}:00 - {cierre_slots}:00")
+                            # Si los datos del endpoint resultan “más restrictivos” que los detectados, usamos los de slots
                             if apertura_ep > apertura_slots or cierre_ep < cierre_slots:
-                                print(f"[DEBUG] Usando valores detectados por slots: {apertura_slots}:00 - {cierre_slots}:00")
+                                print(f"[DEBUG] Usando valores detectados por slots")
                                 return apertura_slots, cierre_slots
                             else:
                                 return apertura_ep, cierre_ep
     except Exception as e:
         print(f"[DEBUG] Error obteniendo horarios operativos del endpoint: {e}")
-    # Si no se pudo obtener o no hay datos, usar la detección por slots
+    # Si falla el endpoint, usar la detección por slots
     return detectar_horarios_operativos_por_slots(fecha)
 
 def obtener_horarios_disponibles(fecha):
     """
-    Consulta los slots disponibles en Bookeo para todas las salas para la fecha indicada
-    (rango de 00:00 a 23:59:59Z) y filtra los slots para incluir sólo aquellos que caigan
-    dentro de los horarios operativos detectados.
+    Consulta los slots disponibles en Bookeo para todas las salas para la fecha indicada (00:00-23:59:59Z)
+    y filtra los slots para mostrar sólo aquellos que estén dentro de los horarios operativos detectados.
     """
     inicio_dia = f"{fecha}T00:00:00Z"
     fin_dia = f"{fecha}T23:59:59Z"
     headers = {"Content-Type": "application/json"}
     disponibilidad = []
-
-    # Obtener horarios operativos detectados para la fecha
+    # Obtener los horarios operativos detectados
     apertura, cierre = obtener_horarios_apertura_cierre(fecha)
     print(f"[DEBUG] Horarios operativos para {fecha}: {apertura}:00 - {cierre}:00")
 
@@ -121,19 +143,17 @@ def obtener_horarios_disponibles(fecha):
             try:
                 data = response.json()
                 slots = data.get("data", [])
-                # Filtrar para que solo se incluyan slots dentro de [apertura, cierre]
                 slots_filtrados = []
                 for slot in slots:
-                    st = slot.get("startTime", "")
-                    et = slot.get("endTime", "")
+                    st = slot.get("startTime")
+                    et = slot.get("endTime")
                     if st and et:
-                        try:
-                            start_hour = int(st.split("T")[1].split(":")[0])
-                            end_hour = int(et.split("T")[1].split(":")[0])
-                        except Exception:
-                            continue
-                        if start_hour >= apertura and end_hour <= cierre:
-                            slots_filtrados.append(slot)
+                        hst = parse_iso_hour(st)
+                        het = parse_iso_hour(et)
+                        if hst is not None and het is not None:
+                            # Incluir el slot si comienza a partir de la apertura y finaliza a o antes del cierre
+                            if hst >= apertura and het <= cierre:
+                                slots_filtrados.append(slot)
                 if slots_filtrados:
                     horarios = [f"🕒 {slot['startTime'][11:16]} - {slot['endTime'][11:16]}" for slot in slots_filtrados]
                     disponibilidad.append(f"*{sala}:*\n" + "\n".join(horarios))
@@ -156,20 +176,20 @@ def webhook():
     Recibe mensajes de WhatsApp (vía Twilio) y responde con la disponibilidad de salas
     para la fecha solicitada.
     
-    - Si el mensaje es "disponibilidad" sin número se usa la fecha actual.
-    - Si es "disponibilidad 9" se consulta para 2025-02-09, "disponibilidad 10" para 2025-02-10, etc.
+    - Si se envía "disponibilidad" sin número, se usa la fecha actual.
+    - Si se envía "disponibilidad 9" se consulta para 2025‑02‑09,
+      "disponibilidad 10" para 2025‑02‑10, etc.
     """
     incoming_msg = request.values.get("Body", "").strip().lower()
     resp = MessagingResponse()
     msg = resp.message()
-    
+
     if "disponibilidad" in incoming_msg:
         partes = incoming_msg.split()
         if len(partes) > 1 and partes[1].isdigit():
             fecha_consulta = f"2025-02-{partes[1].zfill(2)}"
         else:
             fecha_consulta = datetime.datetime.utcnow().strftime("%Y-%m-%d")
-        
         slots = obtener_horarios_disponibles(fecha_consulta)
         apertura, cierre = obtener_horarios_apertura_cierre(fecha_consulta)
         info_operativa = f"(Horarios operativos: {apertura:02d}:00 - {cierre:02d}:00)"
