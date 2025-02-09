@@ -18,17 +18,9 @@ SALAS = {
     "Sala D": "41566UKFAJM17E54036652_TAHYRHYL",
 }
 
-def parse_iso_hour(iso_str):
-    try:
-        dt = datetime.datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
-        return dt.hour
-    except Exception as e:
-        print(f"[DEBUG] Error parseando '{iso_str}': {e}")
-        return None
-
 def obtener_horarios_disponibles(fecha):
     inicio_dia = f"{fecha}T00:00:00Z"
-    fin_dia = f"{fecha}T03:00:00Z"  # Ajustado para capturar horarios hasta las 3 AM del día siguiente
+    fin_dia = (datetime.datetime.strptime(fecha, "%Y-%m-%d") + datetime.timedelta(days=1)).strftime("%Y-%m-%dT03:00:00Z")
     headers = {"Content-Type": "application/json"}
     disponibilidad = []
     
