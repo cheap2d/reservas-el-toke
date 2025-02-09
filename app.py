@@ -103,15 +103,31 @@ def obtener_horarios_disponibles(fecha):
 @app.route("/webhook", methods=["POST"])
 def webhook():
     incoming_msg = request.values.get("Body", "").strip().lower()
-    print(f"[DEBUG] Mensaje recibido: {incoming_msg}")  # Log para ver el mensaje entrante
-    
+    print(f"[DEBUG] Mensaje recibido: {incoming_msg}")  # Verificar qué mensaje llega
+
     resp = MessagingResponse()
     msg = resp.message()
-    respuesta = "Prueba de respuesta 🚀"
-    print(f"[DEBUG] Respuesta enviada: {respuesta}")  # Log para ver qué se está enviando
 
+    if "disponibilidad" in incoming_msg:
+        fecha_consulta = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+        print(f"[DEBUG] Consultando disponibilidad para {fecha_consulta}")  # Log de la fecha
+
+        slots = obtener_horarios_disponibles(fecha_consulta)
+        print(f"[DEBUG] Resultado de disponibilidad:\n{slots}")  # Log de lo que devuelve la función
+
+        respuesta = (
+            f"📅 *Disponibilidad de salas para el {fecha_consulta}:*\n"
+            "✔ Sala A\n✔ Sala B\n✔ Sala C\n✔ Sala D\n\n"
+            "📆 *Horarios disponibles:*\n"
+            f"{slots}"
+        )
+    else:
+        respuesta = "No entendí tu mensaje. Escribe 'disponibilidad' para ver las salas y horarios."
+
+    print(f"[DEBUG] Respuesta enviada:\n{respuesta}")  # Log de la respuesta final
     msg.body(respuesta)
     return str(resp), 200, {'Content-Type': 'text/xml'}
+
 
 
 if __name__ == "__main__":
