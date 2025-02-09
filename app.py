@@ -55,16 +55,20 @@ def webhook():
     if "disponibilidad" in incoming_msg:
         partes = incoming_msg.split()
         hoy = datetime.datetime.utcnow()
-        
+
         if len(partes) > 1 and partes[1].isdigit():
             try:
                 dia_solicitado = int(partes[1])
-                fecha_consulta = hoy.replace(day=dia_solicitado).strftime("%Y-%m-%d")
-                # Asegurar que el mes y año no cambien inesperadamente
-                if dia_solicitado < hoy.day:
-                    fecha_consulta = (hoy.replace(day=1) + datetime.timedelta(days=31)).replace(day=dia_solicitado).strftime("%Y-%m-%d")
+                # Si el día es mayor o igual al actual, usamos este mes
+                if dia_solicitado >= hoy.day:
+                    fecha_consulta = hoy.replace(day=dia_solicitado).strftime("%Y-%m-%d")
+                else:
+                    # Si el día es menor al actual, asumimos el siguiente mes
+                    mes_siguiente = hoy.month + 1 if hoy.month < 12 else 1
+                    año_siguiente = hoy.year if mes_siguiente > 1 else hoy.year + 1
+                    fecha_consulta = datetime.datetime(year=año_siguiente, month=mes_siguiente, day=dia_solicitado).strftime("%Y-%m-%d")
             except ValueError:
-                fecha_consulta = hoy.strftime("%Y-%m-%d")
+                fecha_consulta = hoy.strftime("%Y-%m-%d")  # Fallback a hoy en caso de error
         else:
             fecha_consulta = hoy.strftime("%Y-%m-%d")
         
@@ -80,6 +84,7 @@ def webhook():
     
     msg.body(respuesta)
     return str(resp), 200, {'Content-Type': 'text/xml'}
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
