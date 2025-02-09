@@ -18,56 +18,33 @@ SALAS = {
     "Sala D": "41566UKFAJM17E54036652_TAHYRHYL",
 }
 
+# Definir manualmente los horarios operativos para fechas específicas.
+# Ajusta estos valores según la configuración real de tu negocio en Bookeo.
+OPERATING_HOURS = {
+    "2025-02-09": (12, 16),  # Apertura a las 12:00 y cierre a las 16:00 para el 9 de febrero
+    "2025-02-10": (8, 20),   # Apertura a las 08:00 y cierre a las 20:00 para el 10 de febrero
+}
+
 def obtener_horarios_apertura_cierre(fecha):
     """
-    Consulta el endpoint /business/operatingHours y busca los horarios de apertura y cierre
-    para el día correspondiente a la fecha indicada.
-    
-    Se asume que:
-      - La respuesta contiene una clave "data" con una lista de objetos.
-      - Cada objeto tiene "dayOfWeek", "startTime" y "endTime".
-      - Bookeo utiliza la convención: domingo=0, lunes=1, …, sábado=6.
-    
-    Como Python devuelve weekday() con lunes=0 … domingo=6, convertimos:
-        bookeo_day = (python_weekday + 1) % 7
-    Si no se encuentra información, se retornan valores por defecto.
+    Retorna los horarios operativos (apertura, cierre) para la fecha dada,
+    usando la información del diccionario OPERATING_HOURS.
+    Si la fecha no está configurada, retorna valores por defecto (16:00-20:00).
     """
-    url = f"{BOOKEO_BASE_URL}/business/operatingHours?apiKey={BOOKEO_API_KEY}&secretKey={BOOKEO_SECRET_KEY}"
-    try:
-        response = requests.get(url)
-        if response.status_code in (200, 201):
-            data = response.json()
-            dt = datetime.datetime.strptime(fecha, "%Y-%m-%d")
-            python_weekday = dt.weekday()  # lunes=0, domingo=6
-            bookeo_day = (python_weekday + 1) % 7  # Convertir: domingo=0, lunes=1, etc.
-            print(f"[DEBUG] Fecha: {fecha} | Python weekday: {python_weekday} | Bookeo_day: {bookeo_day}")
-            if "data" in data and data["data"]:
-                for item in data["data"]:
-                    print(f"[DEBUG] operatingHours item: {item}")
-                    # Se asume que item["dayOfWeek"] es numérico y sigue la convención Bookeo.
-                    if "dayOfWeek" in item and int(item["dayOfWeek"]) == bookeo_day:
-                        apertura_str = item.get("startTime", "16:00:00")
-                        cierre_str = item.get("endTime", "20:00:00")
-                        print(f"[DEBUG] Horario para {fecha}: Apertura: {apertura_str} - Cierre: {cierre_str}")
-                        return int(apertura_str.split(":")[0]), int(cierre_str.split(":")[0])
-    except Exception as e:
-        print(f"[DEBUG] Error obteniendo horarios operativos: {e}")
-    # Valores por defecto en caso de error o si no hay datos:
-    # Puedes ajustar estos valores según la configuración de tu negocio.
-    return 16, 20
+    return OPERATING_HOURS.get(fecha, (16, 20))
 
 def obtener_horarios_disponibles(fecha):
     """
     Consulta los slots disponibles en Bookeo para todas las salas para la fecha indicada
-    (desde las 00:00 hasta las 23:59:59Z) y filtra los slots para que se muestren solo aquellos
-    que caigan dentro del horario operativo obtenido (por ejemplo, apertura 16:00 y cierre 20:00).
+    (rango 00:00 a 23:59:59Z) y filtra los slots para incluir solo aquellos que
+    caigan dentro de los horarios operativos definidos.
     """
     inicio_dia = f"{fecha}T00:00:00Z"
     fin_dia = f"{fecha}T23:59:59Z"
     headers = {"Content-Type": "application/json"}
     disponibilidad = []
-
-    # Obtener los horarios operativos para la fecha
+    
+    # Obtener los horarios operativos manualmente
     apertura, cierre = obtener_horarios_apertura_cierre(fecha)
 
     for sala, sala_id in SALAS.items():
@@ -83,7 +60,7 @@ def obtener_horarios_disponibles(fecha):
             try:
                 data = response.json()
                 slots = data.get("data", [])
-                # Filtrar slots para incluir solo aquellos dentro del horario operativo
+                # Filtrar los slots para incluir únicamente los que caigan dentro de [apertura, cierre]
                 slots_filtrados = []
                 for slot in slots:
                     st = slot.get("startTime", "")
@@ -92,7 +69,7 @@ def obtener_horarios_disponibles(fecha):
                         try:
                             start_hour = int(st.split("T")[1].split(":")[0])
                             end_hour = int(et.split("T")[1].split(":")[0])
-                        except Exception as ex:
+                        except Exception:
                             continue
                         if start_hour >= apertura and end_hour <= cierre:
                             slots_filtrados.append(slot)
@@ -118,8 +95,9 @@ def webhook():
     Recibe mensajes de WhatsApp (vía Twilio) y responde con la disponibilidad de salas
     para la fecha solicitada.
     
-    - Si el mensaje es "disponibilidad" se usa la fecha actual.
-    - Si es "disponibilidad 9", se consulta para el 2025-02-09 (en este ejemplo se fija el mes y el año a 2025-02).
+    - Si se envía "disponibilidad" sin número, se usa la fecha actual.
+    - Si se envía "disponibilidad 9" se consulta para 2025-02-09,
+      "disponibilidad 10" para 2025-02-10, etc.
     """
     incoming_msg = request.values.get("Body", "").strip().lower()
     resp = MessagingResponse()
@@ -131,8 +109,8 @@ def webhook():
             fecha_consulta = f"2025-02-{partes[1].zfill(2)}"
         else:
             fecha_consulta = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+        
         slots = obtener_horarios_disponibles(fecha_consulta)
-        # También obtenemos la información operativa para mostrarla (por depuración)
         apertura, cierre = obtener_horarios_apertura_cierre(fecha_consulta)
         info_operativa = f"(Horarios operativos: {apertura:02d}:00 - {cierre:02d}:00)"
         respuesta = (
