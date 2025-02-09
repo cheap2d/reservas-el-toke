@@ -54,11 +54,20 @@ def webhook():
     
     if "disponibilidad" in incoming_msg:
         partes = incoming_msg.split()
+        hoy = datetime.datetime.utcnow()
+        
         if len(partes) > 1 and partes[1].isdigit():
-            hoy = datetime.datetime.utcnow()
-            fecha_consulta = hoy.replace(day=int(partes[1])).strftime("%Y-%m-%d")
+            try:
+                dia_solicitado = int(partes[1])
+                fecha_consulta = hoy.replace(day=dia_solicitado).strftime("%Y-%m-%d")
+                # Asegurar que el mes y año no cambien inesperadamente
+                if dia_solicitado < hoy.day:
+                    fecha_consulta = (hoy.replace(day=1) + datetime.timedelta(days=31)).replace(day=dia_solicitado).strftime("%Y-%m-%d")
+            except ValueError:
+                fecha_consulta = hoy.strftime("%Y-%m-%d")
         else:
-            fecha_consulta = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+            fecha_consulta = hoy.strftime("%Y-%m-%d")
+        
         slots = obtener_horarios_disponibles(fecha_consulta)
         respuesta = (
             f"📅 *Disponibilidad de salas para {fecha_consulta}:*\n"
