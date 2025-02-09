@@ -2,6 +2,7 @@ from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
 import requests
 import datetime
+import re
 
 app = Flask(__name__)
 
@@ -18,14 +19,12 @@ SALAS = {
     "Sala D": "41566UKFAJM17E54036652_TAHYRHYL",
 }
 
-def obtener_horarios_disponibles():
+def obtener_horarios_disponibles(fecha):
     """
-    Consulta los horarios disponibles en Bookeo para todas las salas.
-    Si la respuesta es 200 o 201, procesa los datos; en caso contrario,
-    devuelve el error con código y mensaje.
+    Consulta los horarios disponibles en Bookeo para todas las salas en la fecha especificada.
     """
-    hoy = datetime.datetime.utcnow().strftime("%Y-%m-%dT00:00:00Z")
-    fin_dia = datetime.datetime.utcnow().strftime("%Y-%m-%dT23:59:59Z")
+    hoy = datetime.datetime.strptime(fecha, "%d-%m-%Y").strftime("%Y-%m-%dT00:00:00Z")
+    fin_dia = datetime.datetime.strptime(fecha, "%d-%m-%Y").strftime("%Y-%m-%dT23:59:59Z")
     headers = {"Content-Type": "application/json"}
     disponibilidad = []
 
@@ -45,9 +44,13 @@ def obtener_horarios_disponibles():
             try:
                 data = response.json()
                 slots = data.get("data", [])
-                if slots:
-                    # Se extraen las horas (tomando la subcadena que contiene la hora)
-                    horarios = [f"🕒 {slot['startTime'][11:16]} - {slot['endTime'][11:16]}" for slot in slots]
+                horarios = []
+                for slot in slots:
+                    start_hour = int(slot['startTime'][11:13])
+                    end_hour = int(slot['endTime'][11:13])
+                    for hour in range(start_hour, end_hour):
+                        horarios.append(f"🕒 {hour:02d}:00 - {hour+1:02d}:00")
+                if horarios:
                     disponibilidad.append(f"*{sala}:*\n" + "\n".join(horarios))
                 else:
                     disponibilidad.append(f"*{sala}:* No hay horarios disponibles.")
@@ -70,22 +73,30 @@ def webhook():
     de salas y horarios. Si el mensaje contiene "disponibilidad" se consulta Bookeo.
     """
     incoming_msg = request.values.get("Body", "").strip().lower()
+    fecha_hoy = datetime.datetime.utcnow().strftime("%d-%m-%Y")
+    match = re.search(r"(\d{2}-\d{2}-\d{4})", incoming_msg)
+    
+    if match:
+        fecha_consulta = match.group(1)
+    else:
+        fecha_consulta = fecha_hoy  # Si no hay fecha en el mensaje, usa hoy
+
     resp = MessagingResponse()
     msg = resp.message()
     
     if "disponibilidad" in incoming_msg:
-        horarios = obtener_horarios_disponibles()
+        horarios = obtener_horarios_disponibles(fecha_consulta)
         respuesta = (
-            "📅 *Disponibilidad de salas:*\n"
+            f"📅 *Disponibilidad de salas para el {fecha_consulta}:*\n"
             "✔ Sala A\n"
             "✔ Sala B\n"
             "✔ Sala C\n"
             "✔ Sala D\n\n"
-            "📆 *Horarios disponibles para hoy:*\n"
+            "📆 *Horarios disponibles:*\n"
             f"{horarios}"
         )
     else:
-        respuesta = "No entendí tu mensaje. Escribe 'Disponibilidad' para ver las salas y horarios."
+        respuesta = "No entendí tu mensaje. Escribe 'Disponibilidad' seguido de una fecha (DD-MM-YYYY) para ver los horarios disponibles."
     
     msg.body(respuesta)
     return str(resp), 200, {'Content-Type': 'text/xml'}
