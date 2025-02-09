@@ -103,29 +103,16 @@ def obtener_horarios_disponibles(fecha):
 @app.route("/webhook", methods=["POST"])
 def webhook():
     incoming_msg = request.values.get("Body", "").strip().lower()
+    print(f"[DEBUG] Mensaje recibido: {incoming_msg}")  # Log para ver el mensaje entrante
+    
     resp = MessagingResponse()
     msg = resp.message()
+    respuesta = "Prueba de respuesta 🚀"
+    print(f"[DEBUG] Respuesta enviada: {respuesta}")  # Log para ver qué se está enviando
 
-    if "disponibilidad" in incoming_msg:
-        partes = incoming_msg.split()
-        if len(partes) > 1 and partes[1].isdigit():
-            fecha_consulta = f"2025-02-{partes[1].zfill(2)}"
-        else:
-            fecha_consulta = datetime.datetime.utcnow().strftime("%Y-%m-%d")
-        slots = obtener_horarios_disponibles(fecha_consulta)
-        apertura, cierre = obtener_horarios_apertura_cierre(fecha_consulta)
-        info_operativa = f"(Horarios operativos: {apertura:02d}:00 - {cierre:02d}:00)"
-        respuesta = (
-            f"📅 *Disponibilidad de salas para el {fecha_consulta}:* {info_operativa}\n"
-            "✔ Sala A\n✔ Sala B\n✔ Sala C\n✔ Sala D\n\n"
-            "📆 *Horarios disponibles (dentro del horario operativo):*\n"
-            f"{slots}"
-        )
-    else:
-        respuesta = "No entendí tu mensaje. Escribe 'disponibilidad' (opcionalmente seguido del día, ej. 'disponibilidad 10') para ver las salas y horarios."
-    
     msg.body(respuesta)
     return str(resp), 200, {'Content-Type': 'text/xml'}
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
