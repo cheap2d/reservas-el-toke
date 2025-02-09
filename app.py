@@ -19,11 +19,18 @@ SALAS = {
 }
 
 def obtener_horarios_disponibles(fecha):
+    """
+    Consulta los horarios disponibles en Bookeo para la fecha indicada.
+    Se ajusta el `endTime` para extenderlo hasta las 3:00 am del día siguiente.
+    """
+    print(f"[DEBUG] Buscando disponibilidad para: {fecha}")  # Depuración
+
     inicio_dia = f"{fecha}T00:00:00Z"
     fin_dia = (datetime.datetime.strptime(fecha, "%Y-%m-%d") + datetime.timedelta(days=1)).strftime("%Y-%m-%dT03:00:00Z")
+
     headers = {"Content-Type": "application/json"}
     disponibilidad = []
-    
+
     for sala, sala_id in SALAS.items():
         url = f"{BOOKEO_BASE_URL}/availability/matchingslots?apiKey={BOOKEO_API_KEY}&secretKey={BOOKEO_SECRET_KEY}"
         payload = {
@@ -33,6 +40,7 @@ def obtener_horarios_disponibles(fecha):
             "peopleNumbers": [{"peopleCategoryId": "Cadults", "number": 1}]
         }
         response = requests.post(url, headers=headers, json=payload)
+
         if response.status_code in (200, 201):
             try:
                 data = response.json()
@@ -44,20 +52,26 @@ def obtener_horarios_disponibles(fecha):
                     disponibilidad.append(f"*{sala}:* No hay horarios disponibles.")
             except Exception as e:
                 disponibilidad.append(f"*{sala}:* Error al procesar la respuesta: {e}")
+        else:
+            disponibilidad.append(f"*{sala}:* Error {response.status_code} - {response.text}")
+
     return "\n\n".join(disponibilidad)
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
+    """
+    Maneja los mensajes de WhatsApp. Consulta la disponibilidad de hoy o de una fecha específica.
+    """
     incoming_msg = request.values.get("Body", "").strip().lower()
     resp = MessagingResponse()
     msg = resp.message()
-    
-    # 🔹 Obtener la fecha actual cada vez que se ejecuta la función
+
+    # Obtener la fecha actual en cada solicitud
     hoy = datetime.datetime.utcnow()
 
     if "disponibilidad" in incoming_msg:
         partes = incoming_msg.split()
-        
+
         if len(partes) > 1 and partes[1].isdigit():
             try:
                 dia_solicitado = int(partes[1])
@@ -66,9 +80,11 @@ def webhook():
             except ValueError:
                 fecha_consulta = hoy.strftime("%Y-%m-%d")
         else:
-            fecha_consulta = hoy.strftime("%Y-%m-%d")  # 🔹 Se asegura de siempre actualizar la fecha actual
-        
+            fecha_consulta = hoy.strftime("%Y-%m-%d")
+
+        print(f"[DEBUG] Consultando disponibilidad para: {fecha_consulta}")  # Depuración
         slots = obtener_horarios_disponibles(fecha_consulta)
+
         respuesta = (
             f"📅 *Disponibilidad de salas para {fecha_consulta}:*\n"
             "✔ Sala A\n✔ Sala B\n✔ Sala C\n✔ Sala D\n\n"
@@ -77,10 +93,9 @@ def webhook():
         )
     else:
         respuesta = "No entendí tu mensaje. Escribe 'disponibilidad' (opcionalmente seguido del día, ej. 'disponibilidad 10') para ver las salas y horarios."
-    
+
     msg.body(respuesta)
     return str(resp), 200, {'Content-Type': 'text/xml'}
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
