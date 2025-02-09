@@ -26,56 +26,12 @@ def parse_iso_hour(iso_str):
         print(f"[DEBUG] Error parseando '{iso_str}': {e}")
         return None
 
-def detectar_horarios_operativos_por_slots():
-    fecha = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d")
+def obtener_horarios_disponibles(fecha):
     inicio_dia = f"{fecha}T00:00:00Z"
-    fin_dia = f"{fecha}T23:59:59Z"
-    
-    headers = {"Content-Type": "application/json"}
-    url = f"{BOOKEO_BASE_URL}/availability/matchingslots?apiKey={BOOKEO_API_KEY}&secretKey={BOOKEO_SECRET_KEY}"
-    
-    horas_inicio = []
-    horas_fin = []
-
-    for sala, sala_id in SALAS.items():
-        payload = {
-            "productId": sala_id,
-            "startTime": inicio_dia,
-            "endTime": fin_dia,
-            "peopleNumbers": [{"peopleCategoryId": "Cadults", "number": 1}]
-        }
-        response = requests.post(url, headers=headers, json=payload)
-
-        if response.status_code in (200, 201):
-            data = response.json()
-            slots = data.get("data", [])
-            for slot in slots:
-                hst = parse_iso_hour(slot.get("startTime"))
-                het = parse_iso_hour(slot.get("endTime"))
-                if hst is not None:
-                    horas_inicio.append(hst)
-                if het is not None:
-                    horas_fin.append(het)
-        else:
-            print(f"[ERROR] No se pudieron obtener los slots para {sala}")
-
-    if horas_inicio and horas_fin:
-        apertura_detectada = min(horas_inicio)
-        cierre_detectada = max(horas_fin)
-        return apertura_detectada, cierre_detectada
-    else:
-        print("[ERROR] No se detectaron horarios disponibles en ninguna sala.")
-        return None, None
-
-def obtener_horarios_disponibles():
-    fecha = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d")
-    inicio_dia = f"{fecha}T00:00:00Z"
-    fin_dia = f"{fecha}T23:59:59Z"
+    fin_dia = f"{fecha}T03:00:00Z"  # Ajustado para capturar horarios hasta las 3 AM del día siguiente
     headers = {"Content-Type": "application/json"}
     disponibilidad = []
-    apertura, cierre = detectar_horarios_operativos_por_slots()
-    print(f"[DEBUG] Horarios operativos detectados: {apertura}:00 - {cierre}:00")
-
+    
     for sala, sala_id in SALAS.items():
         url = f"{BOOKEO_BASE_URL}/availability/matchingslots?apiKey={BOOKEO_API_KEY}&secretKey={BOOKEO_SECRET_KEY}"
         payload = {
@@ -89,9 +45,8 @@ def obtener_horarios_disponibles():
             try:
                 data = response.json()
                 slots = data.get("data", [])
-                slots_filtrados = [slot for slot in slots if apertura <= parse_iso_hour(slot.get("startTime")) < cierre]
-                if slots_filtrados:
-                    horarios = [f"🕒 {slot['startTime'][11:16]} - {slot['endTime'][11:16]}" for slot in slots_filtrados]
+                if slots:
+                    horarios = [f"🕒 {slot['startTime'][11:16]} - {slot['endTime'][11:16]}" for slot in slots]
                     disponibilidad.append(f"*{sala}:*\n" + "\n".join(horarios))
                 else:
                     disponibilidad.append(f"*{sala}:* No hay horarios disponibles.")
@@ -104,18 +59,22 @@ def webhook():
     incoming_msg = request.values.get("Body", "").strip().lower()
     resp = MessagingResponse()
     msg = resp.message()
-
+    
     if "disponibilidad" in incoming_msg:
-        slots = obtener_horarios_disponibles()
-        apertura, cierre = detectar_horarios_operativos_por_slots()
+        partes = incoming_msg.split()
+        if len(partes) > 1 and partes[1].isdigit():
+            fecha_consulta = f"2025-02-{partes[1].zfill(2)}"
+        else:
+            fecha_consulta = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+        slots = obtener_horarios_disponibles(fecha_consulta)
         respuesta = (
-            f"📅 *Disponibilidad de salas para hoy:* (Horarios operativos: {apertura:02d}:00 - {cierre:02d}:00)\n"
+            f"📅 *Disponibilidad de salas para {fecha_consulta}:*\n"
             "✔ Sala A\n✔ Sala B\n✔ Sala C\n✔ Sala D\n\n"
             "📆 *Horarios disponibles:*\n"
             f"{slots}"
         )
     else:
-        respuesta = "No entendí tu mensaje. Escribe 'disponibilidad' para ver las salas y horarios."
+        respuesta = "No entendí tu mensaje. Escribe 'disponibilidad' (opcionalmente seguido del día, ej. 'disponibilidad 10') para ver las salas y horarios."
     
     msg.body(respuesta)
     return str(resp), 200, {'Content-Type': 'text/xml'}
